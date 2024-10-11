@@ -85,80 +85,18 @@ impl<'a> Lexer<'a> {
                     self.advance();
                     continue;
                 }
-                '+' => {
-                    self.advance();
-                    return Token::Plus;
-                }
-                '-' => {
-                    self.advance();
-                    return Token::Minus;
-                }
-                '*' => {
-                    self.advance();
-                    return Token::Mul;
-                }
-                '/' => {
-                    self.advance();
-                    return Token::Slash;
-                }
-                '(' => {
-                    self.advance();
-                    return Token::LParen;
-                }
-                ')' => {
-                    self.advance();
-                    return Token::RParen;
-                }
-                '=' => {
-                    self.advance();
-                    if self.current_char == Some('=') {
-                        self.advance();
-                        return Token::Equal;
-                    } else {
-                        return Token::Assign;
-                    }
-                }
-                '>' => {
-                    self.advance();
-                    if self.current_char == Some('=') {
-                        self.advance();
-                        return Token::GreaterThanEqual;
-                    } else {
-                        return Token::GreaterThan;
-                    }
-                }
-                '<' => {
-                    self.advance();
-                    if self.current_char == Some('=') {
-                        self.advance();
-                        return Token::LessThanEqual;
-                    } else {
-                        return Token::LessThan;
-                    }
-                }
-                '!' => {
-                    self.advance();
-                    if self.current_char == Some('=') {
-                        self.advance();
-                        return Token::NotEqual;
-                    }
-                }
-                '&' => {
-                    self.advance();
-                    if self.current_char == Some('&') {
-                        self.advance();
-                        return Token::And;
-                    }
-                    return Token::EOF;
-                }
-                '|' => {
-                    self.advance();
-                    if self.current_char == Some('|') {
-                        self.advance();
-                        return Token::Or;
-                    }
-                    return Token::EOF;
-                }
+                '+' => return self.single_char_token(Token::Plus),
+                '-' => return self.single_char_token(Token::Minus),
+                '*' => return self.single_char_token(Token::Mul),
+                '/' => return self.single_char_token(Token::Slash),
+                '(' => return self.single_char_token(Token::LParen),
+                ')' => return self.single_char_token(Token::RParen),
+                '=' => return self.double_char_token('=', Token::Equal, Token::Assign),
+                '>' => return self.double_char_token('=', Token::GreaterThanEqual, Token::GreaterThan),
+                '<' => return self.double_char_token('=', Token::LessThanEqual, Token::LessThan),
+                '!' => return self.double_char_token('=', Token::NotEqual, Token::EOF),
+                '&' => return self.double_char_token('&', Token::And, Token::EOF),
+                '|' => return self.double_char_token('|', Token::Or, Token::EOF),
                 '0'..='9' => {
                     let num = self.number();
                     if num.contains('.') {
@@ -252,6 +190,22 @@ impl<'a> Lexer<'a> {
                 }
                 self.advance(); // Continue advancing
             }
+        }
+    }
+
+    // helper methods
+    fn single_char_token(&mut self, token: Token) -> Token {
+        self.advance();
+        token
+    }
+
+    fn double_char_token(&mut self, next_char: char, double_token: Token, single_token: Token) -> Token {
+        self.advance();
+        if self.current_char == Some(next_char) {
+            self.advance();
+            double_token
+        } else {
+            single_token
         }
     }
 }
