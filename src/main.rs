@@ -1,4 +1,6 @@
+mod error;
 mod lexer;
+mod sym_table;
 mod token;
 
 use ecow::EcoString;
@@ -7,13 +9,18 @@ use crate::lexer::Lexer;
 use crate::token::Token;
 
 fn main() {
-    let input = EcoString::from("x + 5 * (3 - y) / 2 > 8 != 8.9 // 8");
+    let input = EcoString::from("x + 5 * (3 - y) / 2 > 8 != 8.9 - @67 // 8");
     let mut lexer = Lexer::new(&input);
 
     loop {
-        let token = lexer.next_token();
-        println!("{:?}", token);
-        if token == Token::EOF {
+        if let Ok(token) = lexer.next_token() {
+            if token == Token::EOF {
+                break;
+            } else {
+                println!("{:?}", token);
+            }
+        } else if let Err(err) = lexer.next_token() {
+            err.report();
             break;
         }
     }
