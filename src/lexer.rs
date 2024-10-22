@@ -1,3 +1,4 @@
+use crate::error::LexerError;
 use crate::Token;
 use ecow::EcoString;
 use std::iter::Peekable;
@@ -8,6 +9,9 @@ pub struct Lexer<'a> {
     current_char: Option<char>,
     input_str: &'a EcoString,
     postion: usize,
+    read_position: usize,
+    line: usize,
+    column: usize,
 }
 
 impl<'a> Lexer<'a> {
@@ -17,6 +21,9 @@ impl<'a> Lexer<'a> {
             current_char: None,
             input_str: source,
             postion: 0,
+            line: 1,
+            column: 0,
+            read_position: 0,
         };
 
         lexer.advance();
@@ -27,6 +34,16 @@ impl<'a> Lexer<'a> {
     pub fn advance(&mut self) {
         self.current_char = self.input.next();
         self.postion += 1;
+        if let Some(c) = self.current_char {
+            if c == '\n' {
+                self.line += 1;
+                self.column = 0;
+            } else {
+                self.column += 1;
+            }
+        } else {
+            self.current_char = None;
+        }
     }
 
     pub fn peek(&mut self) -> Option<&char> {
@@ -40,7 +57,7 @@ impl<'a> Lexer<'a> {
     }
 
     // handle the number from the input source code
-    fn number(&mut self) -> EcoString {
+    fn number(&mut self) -> (EcoString, bool) {
         let mut num_str = EcoString::new();
         let mut is_float = false;
 
@@ -55,7 +72,7 @@ impl<'a> Lexer<'a> {
             }
             self.advance();
         }
-        num_str
+        (num_str, is_float)
     }
 
     fn identifier(&mut self) -> Token {
@@ -74,7 +91,7 @@ impl<'a> Lexer<'a> {
     }
 
     // get next token from input
-    pub fn next_token(&mut self) -> Token {
+    pub fn next_token(&mut self) -> Result<Token, LexerError> {
         self.skip_whitespace();
         self.skip_single_comment();
         self.skip_multiline_comment();
@@ -87,99 +104,126 @@ impl<'a> Lexer<'a> {
                 }
                 '+' => {
                     self.advance();
-                    return Token::Plus;
+                    return Ok(Token::Plus);
                 }
                 '-' => {
                     self.advance();
-                    return Token::Minus;
+                    return Ok(Token::Minus);
                 }
                 '*' => {
                     self.advance();
-                    return Token::Mul;
+                    return Ok(Token::Mul);
                 }
                 '/' => {
                     self.advance();
-                    return Token::Slash;
+                    return Ok(Token::Slash);
                 }
                 '(' => {
                     self.advance();
-                    return Token::LParen;
+                    return Ok(Token::LParen);
                 }
                 ')' => {
                     self.advance();
-                    return Token::RParen;
+                    return Ok(Token::RParen);
                 }
                 '=' => {
                     self.advance();
                     if self.current_char == Some('=') {
                         self.advance();
-                        return Token::Equal;
+                        return Ok(Token::Equal);
                     } else {
-                        return Token::Assign;
+                        return Ok(Token::Assign);
                     }
                 }
                 '>' => {
                     self.advance();
                     if self.current_char == Some('=') {
                         self.advance();
-                        return Token::GreaterThanEqual;
+                        return Ok(Token::GreaterThanEqual);
                     } else {
-                        return Token::GreaterThan;
+                        return Ok(Token::GreaterThan);
                     }
                 }
                 '<' => {
                     self.advance();
                     if self.current_char == Some('=') {
                         self.advance();
-                        return Token::LessThanEqual;
+                        return Ok(Token::LessThanEqual);
                     } else {
-                        return Token::LessThan;
+                        return Ok(Token::LessThan);
                     }
                 }
                 '!' => {
                     self.advance();
                     if self.current_char == Some('=') {
                         self.advance();
-                        return Token::NotEqual;
+                        return Ok(Token::NotEqual);
                     }
                 }
                 '&' => {
                     self.advance();
                     if self.current_char == Some('&') {
                         self.advance();
-                        return Token::And;
+                        return Ok(Token::And);
                     }
-                    return Token::EOF;
+                    return Ok(Token::EOF);
                 }
                 '|' => {
                     self.advance();
                     if self.current_char == Some('|') {
                         self.advance();
-                        return Token::Or;
+                        return Ok(Token::Or);
                     }
-                    return Token::EOF;
+                    return Ok(Token::EOF);
                 }
                 '0'..='9' => {
-                    let num = self.number();
-                    if num.contains('.') {
-                        return Token::Float(num.parse().unwrap());
+                    let (num, is_float) = self.number();
+                    let line_content = self.get_current_line();
+                    if is_float {
+                        return Ok(Token::Float(num.parse::<f64>().map_err(|_| {
+                            LexerError::new(
+                                self.line,
+                                self.column,
+                                "invalid float literal".to_string(),
+                                None,
+                                line_content,
+                            )
+                        })?));
                     } else {
-                        return Token::Int(num.parse().unwrap());
+                        return Ok(Token::Int(num.parse::<i64>().map_err(|_| {
+                            LexerError::new(
+                                self.line,
+                                self.column,
+                                "Invalid int literal".to_string(),
+                                None,
+                                line_content,
+                            )
+                        })?));
                     }
                 }
-                'a'..='z' | 'A'..='Z' => return self.identifier(),
+                'a'..='z' | 'A'..='Z' => return Ok(self.identifier()),
                 '"' => {
                     let str_litr = self.parse_string_literal();
-                    return Token::StringLiteral(str_litr);
+                    return Ok(Token::StringLiteral(str_litr));
                 }
                 _ => {
-                    println!("Error: Unexpected char {}", c);
-                    self.advance();
+                    // Unknown char, return an error
+                    let msg = format!("Unexpected character '{}'", c);
+                    let hint = Some("Check for typos or invalid character".to_string());
+                    let line_content = self.get_current_line();
+                    return Err(LexerError::new(
+                        self.line,
+                        self.column,
+                        msg,
+                        hint,
+                        line_content,
+                    ));
+                    //self.advance();
                 }
             }
             self.skip_whitespace();
         }
-        Token::EOF
+        Ok(Token::EOF)
     }
 
     /*
@@ -253,5 +297,13 @@ impl<'a> Lexer<'a> {
                 self.advance(); // Continue advancing
             }
         }
+    }
+
+    fn get_current_line(&self) -> String {
+        self.input_str
+            .lines()
+            .nth(self.line - 1)
+            .unwrap_or("")
+            .to_string()
     }
 }
