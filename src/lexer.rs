@@ -74,7 +74,7 @@ impl<'a> Lexer<'a> {
     }
 
     // get next token from input
-    pub fn next_token(&mut self) -> Token {
+    pub fn next_token(&mut self) -> Result<Token, LexerError> {
         self.skip_whitespace();
         self.skip_single_comment();
         self.skip_multiline_comment();
@@ -85,18 +85,18 @@ impl<'a> Lexer<'a> {
                     self.advance();
                     continue;
                 }
-                '+' => return self.single_char_token(Token::Plus),
-                '-' => return self.single_char_token(Token::Minus),
-                '*' => return self.single_char_token(Token::Mul),
-                '/' => return self.single_char_token(Token::Slash),
-                '(' => return self.single_char_token(Token::LParen),
-                ')' => return self.single_char_token(Token::RParen),
-                '=' => return self.double_char_token('=', Token::Equal, Token::Assign),
-                '>' => return self.double_char_token('=', Token::GreaterThanEqual, Token::GreaterThan),
-                '<' => return self.double_char_token('=', Token::LessThanEqual, Token::LessThan),
-                '!' => return self.double_char_token('=', Token::NotEqual, Token::EOF),
-                '&' => return self.double_char_token('&', Token::And, Token::EOF),
-                '|' => return self.double_char_token('|', Token::Or, Token::EOF),
+                '+' => return Ok(self.single_char_token(Token::Plus)),
+                '-' => return Ok(self.single_char_token(Token::Minus)),
+                '*' => return Ok(self.single_char_token(Token::Mul)),
+                '/' => return Ok(self.single_char_token(Token::Slash)),
+                '(' => return Ok(self.single_char_token(Token::LParen)),
+                ')' => return Ok(self.single_char_token(Token::RParen)),
+                '=' => return Ok(self.double_char_token('=', Token::Equal, Token::Assign)),
+                '>' => return Ok(self.double_char_token('=', Token::GreaterThanEqual, Token::GreaterThan)),
+                '<' => return Ok(self.double_char_token('=', Token::LessThanEqual, Token::LessThan)),
+                '!' => return Ok(self.double_char_token('=', Token::NotEqual, Token::EOF)),
+                '&' => return Ok(self.double_char_token('&', Token::And, Token::EOF)),
+                '|' => return Ok(self.double_char_token('|', Token::Or, Token::EOF)),
                 '0'..='9' => {
                     let num = self.number();
                     if num.contains('.') {
