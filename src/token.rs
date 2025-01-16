@@ -1,25 +1,48 @@
 use ecow::EcoString;
 
-#[derive(Debug, PartialEq)]
-pub enum Token {
+#[derive(Debug, PartialEq, Clone)]
+pub enum TokenType {
     Int(i64),
     Float(f64),
-    StringLiteral(String),
-    Plus,
-    Mul,
-    Minus,
-    Slash,
-    LParen,
-    RParen,
     Identifier(EcoString),
-    Equal,
+
+    // Operators
     Assign,
+    Bang,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+
+    Lt,
+    Gt,
+    LtEq,
+    GtEq,
+    Equal,
     NotEqual,
-    LessThan,
-    LessThanEqual,
-    GreaterThan,
-    GreaterThanEqual,
-    And,
-    Or,
+
+    // Delimeters
+    Semicolon,
+    RParen,
+    LParen,
+    RBrace,
+    LBrace,
+    Comma,
+
+    // Keywords
+    Let,
+    Print,
+    If,
+    Else,
+    Return,
+    Function,
+    True,
+    False,
+
     EOF,
+}
+
+#[derive(Debug)]
+pub struct Token {
+    pub token: TokenType,
 }
