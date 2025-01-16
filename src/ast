@@ -1,0 +1,37 @@
+use ecow::EcoString;
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Expression {
+    Identifier(EcoString),
+    IntegerLiteral(i64),
+    FloatLiteral(f64),
+    Prefix {
+        operator: String,
+        right: Box<Expression>,
+    },
+    Infix {
+        left: Box<Expression>,
+        operator: String,
+        right: Box<Expression>,
+    },
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Statement {
+    Let { name: EcoString, value: Expression },
+    Expression(Expression),
+    Return(Expression),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Program {
+    pub statements: Vec<Statement>,
+}
+
+impl Program {
+    pub fn new() -> Self {
+        Program {
+            statements: Vec::new(),
+        }
+    }
+}

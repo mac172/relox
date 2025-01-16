@@ -1,63 +1,185 @@
-use crate::error::LexerError;
-use crate::Token;
 use ecow::EcoString;
 use std::iter::Peekable;
 use std::str::Chars;
 
+use crate::lexer_error::LexerError;
+use crate::token::{Token, TokenType};
+
+#[derive(Debug)]
 pub struct Lexer<'a> {
     input: Peekable<Chars<'a>>,
-    current_char: Option<char>,
-    input_str: &'a EcoString,
-    postion: usize,
+    position: usize,
     read_position: usize,
-    line: usize,
-    column: usize,
+    current_char: Option<char>,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(source: &'a EcoString) -> Self {
+    pub fn new(input: &'a str) -> Self {
         let mut lexer = Lexer {
-            input: source.chars().peekable(),
-            current_char: None,
-            input_str: source,
-            postion: 0,
-            line: 1,
-            column: 0,
+            input: input.chars().peekable(),
+            position: 0,
             read_position: 0,
+            current_char: None,
         };
 
         lexer.advance();
         lexer
     }
 
-    // next character in input
     pub fn advance(&mut self) {
         self.current_char = self.input.next();
-        self.postion += 1;
-        if let Some(c) = self.current_char {
-            if c == '\n' {
-                self.line += 1;
-                self.column = 0;
-            } else {
-                self.column += 1;
-            }
-        } else {
-            self.current_char = None;
-        }
+        self.position += 1;
     }
 
-    pub fn peek(&mut self) -> Option<&char> {
+    pub fn peek_char(&mut self) -> Option<&char> {
         self.input.peek()
     }
 
-    fn skip_whitespace(&mut self) {
-        while self.current_char.is_some() && self.current_char.unwrap().is_whitespace() {
+    fn single_char_token(&mut self, token: TokenType) -> Result<Token, LexerError> {
+        self.advance();
+        Ok(Token { token })
+    }
+
+    fn double_char_token(
+        &mut self,
+        next_char: Option<&char>,
+        double_token: TokenType,
+        single_token: TokenType,
+    ) -> Result<Token, LexerError> {
+        if next_char == self.peek_char() {
             self.advance();
+            self.advance();
+            return Ok(Token {
+                token: double_token,
+            });
+        } else {
+            self.advance();
+            return Ok(Token {
+                token: single_token,
+            });
         }
     }
 
-    // handle the number from the input source code
-    fn number(&mut self) -> (EcoString, bool) {
+    pub fn get_next_token(&mut self) -> Result<Token, LexerError> {
+        // If current_char is None, end of input reached, return EOF token
+        if self.current_char.is_none() {
+            return Ok(Token {
+                token: TokenType::EOF,
+            });
+        }
+
+        while let Some(c) = self.current_char {
+            match c {
+                ' ' | '\n' | '\t' | '\r' => {
+                    self.advance();
+                    continue;
+                }
+
+                '=' => {
+                    if let Some('=') = self.peek_char() {
+                        self.advance(); // consume '='
+                        self.advance(); // consume next '='
+                        return Ok(Token {
+                            token: TokenType::Equal,
+                        });
+                    } else {
+                        self.advance();
+                        return Ok(Token {
+                            token: TokenType::Assign,
+                        });
+                    }
+                }
+
+                '!' => {
+                    return self.double_char_token(
+                        Some(&'='),
+                        TokenType::NotEqual,
+                        TokenType::Bang,
+                    );
+                }
+
+                '+' => {
+                    return self.single_char_token(TokenType::Plus);
+                }
+
+                '-' => {
+                    return self.single_char_token(TokenType::Minus);
+                }
+
+                '*' => {
+                    return self.single_char_token(TokenType::Star);
+                }
+
+                '/' => {
+                    return self.single_char_token(TokenType::Slash);
+                }
+
+                '>' => {
+                    return self.double_char_token(Some(&'='), TokenType::GtEq, TokenType::Gt);
+                }
+
+                '<' => {
+                    return self.double_char_token(Some(&'='), TokenType::LtEq, TokenType::Lt);
+                }
+
+                ',' => {
+                    return self.single_char_token(TokenType::Comma);
+                }
+
+                ';' => {
+                    self.advance();
+                    return Ok(Token {
+                        token: TokenType::Semicolon,
+                    });
+                }
+
+                '(' => {
+                    return self.single_char_token(TokenType::LParen);
+                }
+
+                ')' => {
+                    return self.single_char_token(TokenType::RParen);
+                }
+
+                '{' => {
+                    return self.single_char_token(TokenType::LBrace);
+                }
+
+                '}' => {
+                    return self.single_char_token(TokenType::RBrace);
+                }
+
+                '0'..='9' => {
+                    let (num, is_float) = self.is_number();
+                    if is_float {
+                        let value = TokenType::Float(num.parse::<f64>().unwrap());
+                        return Ok(Token { token: value });
+                    } else {
+                        let value = num.parse::<i64>().unwrap();
+                        return Ok(Token {
+                            token: TokenType::Int(value),
+                        });
+                    }
+                }
+
+                'a'..='z' | 'A'..='Z' => {
+                    return self.lex_identifier();
+                }
+
+                _ => return Err(LexerError::UnexpectedChar(c)),
+                //panic!("Unknown Character: {}", c);
+            }
+        }
+        // Ok(Token {
+        //     token: TokenType::EOF,
+        // })
+        Ok(Token {
+            token: TokenType::EOF,
+        })
+        // Err(LexerError::EndOfInput)
+    }
+
+    fn is_number(&mut self) -> (EcoString, bool) {
         let mut num_str = EcoString::new();
         let mut is_float = false;
 
@@ -68,6 +190,7 @@ impl<'a> Lexer<'a> {
                 is_float = true;
                 num_str.push(c);
             } else {
+                // println!("Unknown Digit {}", c);
                 break;
             }
             self.advance();
@@ -75,235 +198,30 @@ impl<'a> Lexer<'a> {
         (num_str, is_float)
     }
 
-    fn identifier(&mut self) -> Token {
-        let start_pos = self.postion - 1;
-
+    fn lex_identifier(&mut self) -> Result<Token, LexerError> {
+        let mut identifier = EcoString::new();
         while let Some(c) = self.current_char {
-            if c.is_alphabetic() || c == '_' {
+            if c.is_alphanumeric() || c == '_' {
+                identifier.push(c);
                 self.advance();
             } else {
                 break;
             }
         }
 
-        let ident_str = &self.input_str[start_pos..self.postion - 1];
-        Token::Identifier(EcoString::from(ident_str))
-    }
+        // Check if it matches a keyword or treat as generic identifier
+        let token_type = match identifier.as_str() {
+            "let" => TokenType::Let,
+            "if" => TokenType::If,
+            "print" => TokenType::Print,
+            "else" => TokenType::Else,
+            "true" => TokenType::True,
+            "false" => TokenType::False,
+            "fn" => TokenType::Function,
+            "return" => TokenType::Return,
+            _ => TokenType::Identifier(identifier.clone()),
+        };
 
-    // get next token from input
-    pub fn next_token(&mut self) -> Result<Token, LexerError> {
-        self.skip_whitespace();
-        self.skip_single_comment();
-        self.skip_multiline_comment();
-
-        while let Some(c) = self.current_char {
-            match c {
-                ' ' | '\t' | '\n' | '\r' => {
-                    self.advance();
-                    continue;
-                }
-                '+' => {
-                    self.advance();
-                    return Ok(Token::Plus);
-                }
-                '-' => {
-                    self.advance();
-                    return Ok(Token::Minus);
-                }
-                '*' => {
-                    self.advance();
-                    return Ok(Token::Mul);
-                }
-                '/' => {
-                    self.advance();
-                    return Ok(Token::Slash);
-                }
-                '(' => {
-                    self.advance();
-                    return Ok(Token::LParen);
-                }
-                ')' => {
-                    self.advance();
-                    return Ok(Token::RParen);
-                }
-                '=' => {
-                    self.advance();
-                    if self.current_char == Some('=') {
-                        self.advance();
-                        return Ok(Token::Equal);
-                    } else {
-                        return Ok(Token::Assign);
-                    }
-                }
-                '>' => {
-                    self.advance();
-                    if self.current_char == Some('=') {
-                        self.advance();
-                        return Ok(Token::GreaterThanEqual);
-                    } else {
-                        return Ok(Token::GreaterThan);
-                    }
-                }
-                '<' => {
-                    self.advance();
-                    if self.current_char == Some('=') {
-                        self.advance();
-                        return Ok(Token::LessThanEqual);
-                    } else {
-                        return Ok(Token::LessThan);
-                    }
-                }
-                '!' => {
-                    self.advance();
-                    if self.current_char == Some('=') {
-                        self.advance();
-                        return Ok(Token::NotEqual);
-                    }
-                }
-                '&' => {
-                    self.advance();
-                    if self.current_char == Some('&') {
-                        self.advance();
-                        return Ok(Token::And);
-                    }
-                    return Ok(Token::EOF);
-                }
-                '|' => {
-                    self.advance();
-                    if self.current_char == Some('|') {
-                        self.advance();
-                        return Ok(Token::Or);
-                    }
-                    return Ok(Token::EOF);
-                }
-                '0'..='9' => {
-                    let (num, is_float) = self.number();
-                    let line_content = self.get_current_line();
-                    if is_float {
-                        return Ok(Token::Float(num.parse::<f64>().map_err(|_| {
-                            LexerError::new(
-                                self.line,
-                                self.column,
-                                "invalid float literal".to_string(),
-                                None,
-                                line_content,
-                            )
-                        })?));
-                    } else {
-                        return Ok(Token::Int(num.parse::<i64>().map_err(|_| {
-                            LexerError::new(
-                                self.line,
-                                self.column,
-                                "Invalid int literal".to_string(),
-                                None,
-                                line_content,
-                            )
-                        })?));
-                    }
-                }
-                'a'..='z' | 'A'..='Z' => return Ok(self.identifier()),
-                '"' => {
-                    let str_litr = self.parse_string_literal();
-                    return Ok(Token::StringLiteral(str_litr));
-                }
-                _ => {
-                    // Unknown char, return an error
-                    let msg = format!("Unexpected character '{}'", c);
-                    let hint = Some("Check for typos or invalid character".to_string());
-                    let line_content = self.get_current_line();
-                    return Err(LexerError::new(
-                        self.line,
-                        self.column,
-                        msg,
-                        hint,
-                        line_content,
-                    ));
-                    //self.advance();
-                }
-            }
-            self.skip_whitespace();
-        }
-        Ok(Token::EOF)
-    }
-
-    /*
-    pub fn string_literal(&mut self) -> Token {
-        self.advance(); // skip opening quote
-        let start_pos = self.postion - 1;
-
-        while let Some(c) = self.current_char {
-            if c == '"' {
-                self.advance(); // skip the closing quote
-                let string_litr = &self.input_str[start_pos..self.postion - 1];
-                return Token::StringLiteral(EcoString::from(string_litr));
-            }
-            self.advance();
-        }
-        Token::EOF
-    }*/
-
-    fn parse_string_literal(&mut self) -> String {
-        let mut string_value = String::new();
-        self.advance(); // skip opening quote
-
-        while let Some(c) = self.current_char {
-            if c == '"' {
-                break;
-            }
-            if c == '\\' {
-                self.advance();
-                if let Some(escape_char) = self.current_char {
-                    match escape_char {
-                        'n' => string_value.push('\n'),
-                        't' => string_value.push('\t'),
-                        '\\' => string_value.push('\\'),
-                        '"' => string_value.push('"'),
-                        _ => string_value.push(escape_char),
-                    }
-                } else {
-                    string_value.push(c);
-                }
-                self.advance();
-            }
-        }
-        self.advance();
-        string_value
-    }
-
-    pub fn skip_single_comment(&mut self) {
-        if self.current_char == Some('/') && self.peek() == Some(&'/') {
-            while let Some(c) = self.current_char {
-                if c == '\n' {
-                    break;
-                }
-                self.advance();
-            }
-        }
-    }
-
-    // Skip over multi-line comments
-    fn skip_multiline_comment(&mut self) {
-        if self.current_char == Some('/') && self.peek() == Some(&'*') {
-            self.advance(); // Skip the '/'
-            self.advance(); // Skip the '*'
-
-            // Continue advancing until we find '*/'
-            while let Some(c) = self.current_char {
-                if c == '*' && self.peek() == Some(&'/') {
-                    self.advance(); // Skip the '*'
-                    self.advance(); // Skip the '/'
-                    break;
-                }
-                self.advance(); // Continue advancing
-            }
-        }
-    }
-
-    fn get_current_line(&self) -> String {
-        self.input_str
-            .lines()
-            .nth(self.line - 1)
-            .unwrap_or("")
-            .to_string()
+        Ok(Token { token: token_type })
     }
 }

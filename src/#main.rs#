@@ -1,0 +1,26 @@
+mod ast;
+mod lexer;
+mod lexer_error;
+mod parser;
+mod token;
+
+
+use crate::lexer::Lexer;
+use crate::parser::Parser;
+
+fn main() {
+    let input = "let x = 10 - 45; let x = y; print (x); print y+ 7;";
+    let mut lexer = Lexer::new(input);
+    let mut parser = Parser::new(&mut lexer);
+    let v = V
+    // Continue parsing until parse_statement returns None
+    while let Some(result) = parser.parse_statement() {
+        match result {
+            Ok(stmt) => println!("{:?}", stmt),
+            Err(err) => {
+                eprintln!("Error parsing statement: {}", err);
+                break;
+            }
+        }
+    }
+}
